@@ -263,9 +263,7 @@ def hist_and_weight(nparts, test_init, test_wires, refer_wires, mask, x_index, x
                     grid = k
                     break
             w = x_hist_refer[grid] / hist_test[0][grid]
-            weights[j] += w
-    with open('diff.txt', 'a') as f:
-        f.write('\n') 
+            weights[j] += w 
 
     return weights, test_init
 
@@ -286,7 +284,7 @@ def part_regen(xs, xps, weights, xgrid, nparts_t, halo):
     xp_max = max(xp_new)
     #r = (x_max - x_min) / (xp_max - xp_min)
     #xpgrid = int(xgrid / r)
-    xpgrid = 128
+    xpgrid = 80
     dx = (x_max - x_min) / xgrid
     dxp = (xp_max - xp_min) / xpgrid
     x_min = x_min - dx / 2
@@ -297,12 +295,14 @@ def part_regen(xs, xps, weights, xgrid, nparts_t, halo):
     xpgrid += 1
 
     particle_density = np.zeros((xgrid, xpgrid))
-    for i, (x, xp) in enumerate(zip(x_new, xp_new)):
-        x_cell = int(math.floor((x - x_min) / dx))
-        xp_cell = int(math.floor((xp - xp_min) / dxp))
-        particle_density[x_cell, xp_cell] += weights[i]
+    x_cell = np.floor((x_new - x_min) / dx).astype(np.int)
+    xp_cell = np.floor((xp_new - xp_min) / dxp).astype(np.int)
+    coords = np.c_[x_cell, xp_cell]
+    cell_indices, indxs = np.unique(coords, axis=0, return_inverse=True)
+    weights = np.bincount(indxs, weights)
+    particle_density[cell_indices[:, 0], cell_indices[:, 1]] = weights
 
-    rst_phase_space = []
+    rst_phase_space = np.zeros((nparts_t, 2))
     dens_sum = np.sum(particle_density)
     particle_density = particle_density / dens_sum 
 
@@ -318,14 +318,20 @@ def part_regen(xs, xps, weights, xgrid, nparts_t, halo):
         xps_halo = []
             
     particle_density = particle_density.reshape(xgrid * xpgrid)
-    for i in range(nparts_t - halo_nparts):
-        which_cell = np.random.choice(xgrid * xpgrid, p=particle_density)
-        x_rand = (np.random.random() + which_cell / xpgrid) * dx + x_min
-        xp_rand = (np.random.random() + which_cell % xpgrid) * dxp + xp_min
-        rst_phase_space.append((x_rand, xp_rand))
-    rst_phase_space.extend(zip(xs_halo, xps_halo))
+    num_part = nparts_t - halo_nparts
+    x_rand = np.zeros(num_part)
+    y_rand = np.zeros(num_part)
+    cell_indeces = np.random.choice(xgrid * xpgrid,
+                                    num_part, p=particle_density)
+    x_rand = (np.random.random(num_part) + 
+            cell_indeces / xpgrid) * dx + x_min
+    xp_rand = (np.random.random(num_part) +
+            cell_indeces % xpgrid) * dxp + xp_min
+    
+    x_rand = np.concatenate((x_rand, xs_halo))
+    xp_rand = np.concatenate((xp_rand, xps_halo))
+    rst_phase_space = np.c_[x_rand, xp_rand]
         
-    rst_phase_space = np.array(rst_phase_space)
     x_new = np.cos(rot_angle) * rst_phase_space[:, 0] - np.sin(rot_angle) * rst_phase_space[:, 1]
     xp_new = np.sin(rot_angle) * rst_phase_space[:, 0] + np.cos(rot_angle) * rst_phase_space[:, 1]
     x_new = x_new + avg_x
@@ -352,8 +358,8 @@ def find_centers(iter_depth, profile_num,  bg_noise):
     xWidth = 3
     xpWidth = 5e-2
     nparts = 100000
-    I = 3
-    xgrid = 256
+    I = 7
+    xgrid = 80
     current = np.loadtxt('%s/lattice.txt' % prefix, dtype=int)
     xs, xps = uniformRec(xWidth, xpWidth, nparts)
     partran_dist = readDis('RFQ_base.dst') 
@@ -498,5 +504,5 @@ def process_profile(current, iter_depth, bg_noise, partran_dist, i_test, nparts,
     
 
 if __name__ == '__main__':
-    prefix = 'profiles/trunc_3mA'
+    prefix = 'profiles/trunc_7mA'
     find_centers(300, 4, 0)
