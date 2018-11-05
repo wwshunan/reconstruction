@@ -9,40 +9,36 @@ import sys
 import datetime
 
 mass = 938.272
-w = 2.15
+w = 1.5268011
 gamma = 1 + w / mass
 btgm = (gamma ** 2 - 1) ** 0.5
 
 lattice_name = 'MEBT_emittace.dat'
 txt = '''FREQ 162.5  
-DRIFT 134 40 0
+DRIFT 161.65 100 0
 superpose_map 0 0 0 0 0 0
 MATCH_FAM_GRAD 6 0
-FIELD_MAP 90 300 0 40 $1 0 0 0 quad1
+FIELD_MAP 90 300 0 100 $1 0 0 0 quad1
 superpose_map 192 0 0 0 0 0
 MATCH_FAM_GRAD 6 0
-FIELD_MAP 90 300 0 40 -$2 0 0 0 quad2
+FIELD_MAP 90 300 0 100 -$2 0 0 0 quad2
 superpose_map 379 0 0 0 0 0
 MATCH_FAM_GRAD 6 0
-FIELD_MAP 90 300 0 40 $3 0 0 0 quad1
+FIELD_MAP 90 300 0 100 $3 0 0 0 quad1
 superpose_map 629 0 0 0 0 0
 ;MATCH_FAM_FIELD 6 0
 ;SET_SYNC_PHASE 
-;FIELD_MAP 7700 240 -90 40 0 0 0 0 buncher
-DRIFT 190 40 0
-DRIFT 77 40 0
+;FIELD_MAP 7700 240 -90 100 0 0 0 0 buncher
+DRIFT 190 100 0
+DRIFT 77 100 0
 
 ;MATCH_FAM_GRAD 6 0
-QUAD 80 0 40 0 0 0 0 0 0
+QUAD 80 0 100 0 0 0 0 0 0
 
-DRIFT 122.5 40 0
+DRIFT 122.5 100 0
 
 ;slit
-DRIFT 1e-006 40 0
-
-DRIFT 375.5 40 0
-;wire
-DRIFT 1e-006 40 0
+DRIFT 375.5 100 0
 end
 '''
 
@@ -128,8 +124,8 @@ def uniformRec(xWidth, yWidth, nparts):
     xs = []
     ys = []
     for i in range(nparts):
-        xs.append(np.random.random() * xWidth - xWidth / 2)
-        ys.append(np.random.random() * yWidth - yWidth / 2)
+        xs.append(np.random.random() * xWidth - xWidth / 2.)
+        ys.append(np.random.random() * yWidth - yWidth / 2.)
     return np.array(xs), np.array(ys)
 
 def halo(xs, xps, bin_num, nparts, thick_prop):
@@ -180,7 +176,7 @@ def gen_halo(xs, xps, thick_prop, nparts, weights):
 
 def hist_and_weight(nparts, test_init, test_wires, refer_wires, mask, x_index, xp_index):
     test_init = test_init[mask]
-    weights = np.zeros_like(test_init[:, 0])
+    weights = np.zeros((test_init.shape[0], len(test_wires)))
     test_wires_mask = []
     for i, t in enumerate(test_wires):
         test_wires_mask.append(t[mask])
@@ -263,7 +259,7 @@ def hist_and_weight(nparts, test_init, test_wires, refer_wires, mask, x_index, x
                     grid = k
                     break
             w = x_hist_refer[grid] / hist_test[0][grid]
-            weights[j] += w 
+            weights[j, i] = w 
 
     return weights, test_init
 
@@ -324,7 +320,7 @@ def part_regen(xs, xps, weights, xgrid, nparts_t, halo):
     cell_indeces = np.random.choice(xgrid * xpgrid,
                                     num_part, p=particle_density)
     x_rand = (np.random.random(num_part) + 
-            cell_indeces / xpgrid) * dx + x_min
+            cell_indeces // xpgrid) * dx + x_min
     xp_rand = (np.random.random(num_part) +
             cell_indeces % xpgrid) * dxp + xp_min
     
@@ -355,10 +351,10 @@ def max_and_min(data):
     return x_mins, x_maxs, dxs
 
 def find_centers(iter_depth, profile_num,  bg_noise):
-    xWidth = 3
-    xpWidth = 5e-2
-    nparts = 100000
-    I = 7
+    xWidth = 8
+    xpWidth = 7e-2
+    nparts = 98180
+    I = 0.9818
     xgrid = 80
     current = np.loadtxt('%s/lattice.txt' % prefix, dtype=int)
     xs, xps = uniformRec(xWidth, xpWidth, nparts)
@@ -400,6 +396,8 @@ def new_dis_one_plane(xgrid, nparts, test_init, it, test_wires, refer_wires, whi
     else:
         weights_x, test_init_x = hist_and_weight(nparts, test_init, test_wires, refer_wires, mask_x, x_index, xp_index)
         xs, xps = test_init_x[:, x_index], test_init_x[:, xp_index]
+        weights_x =  np.mean(weights_x, axis=1) 
+        #weights_x = (weights_x_avg +  weights_x_avg * (np.random.rand() * 2 - 1)) if (it > 5 and it < 25) else weights_x_avg
         if it < 1:
             x, xp = part_regen(xs, xps, weights_x, xgrid, nparts, halo=True)
         else:
@@ -417,7 +415,6 @@ def process_profile(current, iter_depth, bg_noise, partran_dist, i_test, nparts,
     dy = 0
     dyp = 0
     for i in range(iter_depth):
-        starttime = datetime.datetime.now()
         test_wires_fname = []
         for c in current:
             run(c, dx, dxp, dy, dyp)
@@ -432,8 +429,8 @@ def process_profile(current, iter_depth, bg_noise, partran_dist, i_test, nparts,
             print np.average(test_wires[j][:, 0]), 'xxx'
             return offsets
 
-        y, yp = new_dis_one_plane(xgrid, nparts, test_init, i, test_wires, y_refer_wires, which='y')
         x, xp = new_dis_one_plane(xgrid, nparts, test_init, i, test_wires, x_refer_wires, which='x')
+        y, yp = new_dis_one_plane(xgrid, nparts, test_init, i, test_wires, y_refer_wires, which='y')
 
         partran_dist[:, 0] = x
         partran_dist[:, 1] = xp
@@ -471,7 +468,7 @@ def process_profile(current, iter_depth, bg_noise, partran_dist, i_test, nparts,
         extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
         fig = plt.figure(20)
         ax = fig.gca()
-        ax.set_axis_bgcolor('white')
+        ax.set_facecolor('white')
         ax.imshow(heatmap_mask.T, extent=extent, origin='lower', aspect='auto', interpolation='bicubic')
 
         k = 0
@@ -487,7 +484,7 @@ def process_profile(current, iter_depth, bg_noise, partran_dist, i_test, nparts,
         extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
         fig = plt.figure(21)
         ax = fig.gca()
-        ax.set_axis_bgcolor('white')
+        ax.set_facecolor('white')
         ax.imshow(heatmap_mask.T, extent=extent, origin='lower', aspect='auto', interpolation='bicubic')
 
         k = 0
@@ -498,11 +495,8 @@ def process_profile(current, iter_depth, bg_noise, partran_dist, i_test, nparts,
             fig.savefig('figs/inity_%s.png' % k)
             break
         plt.close()
-        stoptime = datetime.datetime.now()
-        with open('time.txt', 'a') as f:
-            f.write('%s\n' % (stoptime - starttime).seconds)
     
 
 if __name__ == '__main__':
-    prefix = 'profiles/trunc_7mA'
-    find_centers(300, 4, 0)
+    prefix = '30us-processed'
+    find_centers(50, 5, 0)
